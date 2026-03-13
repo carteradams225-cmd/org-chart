@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Org Chart Dashboard</title>
+<style>
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #eef2f7;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header / controls ────────────────────────────────────────────────────── */
+header {
+  background: #1a3c5e;
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-group label {
+  font-size: 13px;
+  color: #c9d9ea;
+  white-space: nowrap;
+}
+
+select {
+  background: #2e5a80;
+  color: #fff;
+  border: 1px solid #4a7fa8;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  max-width: 260px;
+}
+
+select:focus { border-color: #7bbce0; }
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #c9d9ea;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-label input[type="checkbox"] {
+  accent-color: #7bbce0;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.btn {
+  background: #2e6da4;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.btn:hover { background: #4a90c4; }
+
+#status {
+  font-size: 12px;
+  color: #90b8d4;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* ── Chart container ──────────────────────────────────────────────────────── */
+#chart-container {
+  flex: 1;
+  overflow: auto;
+  padding: 36px 40px 60px;
+}
+
+#chart-inner {
+  position: relative;
+  display: inline-block;
+  min-width: 100%;
+}
+
+#svg-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* ── Node layout ──────────────────────────────────────────────────────────── */
+.node-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Root's direct reports: horizontal row */
+.children-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.child-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* All subsequent levels: vertical column */
+.children-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Spacer between a box and its children (where lines will pass through) */
+.connector-spacer {
+  height: 28px;
+}
+
+/* ── Boxes ────────────────────────────────────────────────────────────────── */
+.box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 9px 14px;
+  border-radius: 7px;
+  box-shadow: 0 2px 7px rgba(0,0,0,0.18);
+  min-width: 148px;
+  max-width: 190px;
+  position: relative;
+  z-index: 2;
+  transition: transform 0.1s, box-shadow 0.1s;
+  cursor: default;
+}
+
+.box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 14px rgba(0,0,0,0.22);
+}
+
+.box-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.box-detail {
+  font-size: 11px;
+  line-height: 1.3;
+  margin-top: 4px;
+  opacity: 0.88;
+}
+
+/* Depth-based colors */
+.depth-0 { background: #1a3c5e; color: #fff; font-size: 14px; min-width: 200px; }
+.depth-1 { background: #2e6da4; color: #fff; }
+.depth-2 { background: #4a90c4; color: #fff; }
+.depth-3 { background: #7bbce0; color: #1a3c5e; }
+.depth-4 { background: #b0d8f0; color: #1a3c5e; }
+.depth-5 { background: #d6ecf8; color: #1a3c5e; }
+
+/* ── Loading / error states ───────────────────────────────────────────────── */
+#loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  font-size: 15px;
+  color: #5a7a95;
+}
+
+/* ── Legend ───────────────────────────────────────────────────────────────── */
+#legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #445a6e;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
+<header>
+  <h1>Org Chart Dashboard</h1>
+  <div class="controls">
+
+    <div class="control-group">
+      <label for="root-select">Manager:</label>
+      <select id="root-select"><option>Loading…</option></select>
+    </div>
+
+    <label class="toggle-label">
+      <input type="checkbox" id="toggle-jobtitle" checked>
+      Job Title
+    </label>
+
+    <label class="toggle-label">
+      <input type="checkbox" id="toggle-location" checked>
+      Location
+    </label>
+
+    <button class="btn" id="btn-export" title="Download a standalone HTML file you can email">
+      ⬇ Export
+    </button>
+
+    <span id="status">Connecting…</span>
+  </div>
+</header>
+
+<!-- ── Chart area ─────────────────────────────────────────────────────────── -->
+<div id="chart-container">
+  <div id="chart-inner">
+    <svg id="svg-lines"></svg>
+    <div id="legend"></div>
+    <div id="chart-root"><div id="loading">Loading chart…</div></div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let currentRoot = null;
+let currentTree = null;
+let lastMtime   = 0;
+let showTitle   = true;
+let showLoc     = true;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const rootSelect  = document.getElementById('root-select');
+const chartRoot   = document.getElementById('chart-root');
+const svg         = document.getElementById('svg-lines');
+const statusEl    = document.getElementById('status');
+const legendEl    = document.getElementById('legend');
+const btnExport   = document.getElementById('btn-export');
+const togTitle    = document.getElementById('toggle-jobtitle');
+const togLoc      = document.getElementById('toggle-location');
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function safeId(name) {
+  return 'n-' + name.replace(/[^a-zA-Z0-9]/g, '_');
+}
+
+function el(tag, className) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  return e;
+}
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+// ── Box rendering ─────────────────────────────────────────────────────────────
+const DEPTH_COLORS = [
+  { bg: '#1a3c5e', fg: '#ffffff' },
+  { bg: '#2e6da4', fg: '#ffffff' },
+  { bg: '#4a90c4', fg: '#ffffff' },
+  { bg: '#7bbce0', fg: '#1a3c5e' },
+  { bg: '#b0d8f0', fg: '#1a3c5e' },
+  { bg: '#d6ecf8', fg: '#1a3c5e' },
+];
+
+function makeBox(node, depth) {
+  const c      = DEPTH_COLORS[Math.min(depth, DEPTH_COLORS.length - 1)];
+  const box    = el('div', 'box');
+  box.id       = safeId(node.name);
+  box.style.background = c.bg;
+  box.style.color      = c.fg;
+
+  const nameEl = el('div', 'box-name');
+  nameEl.textContent = node.name;
+  box.appendChild(nameEl);
+
+  if (node.job_title) {
+    const jt = el('div', 'box-detail box-jobtitle');
+    jt.textContent = node.job_title;
+    box.appendChild(jt);
+  }
+
+  if (node.location) {
+    const loc = el('div', 'box-detail box-location');
+    loc.textContent = '\u{1F4CD} ' + node.location;
+    box.appendChild(loc);
+  }
+
+  return box;
+}
+
+// ── Tree rendering ─────────────────────────────────────────────────────────────
+function renderNode(node, depth) {
+  const wrap = el('div', 'node-wrap');
+
+  const box = makeBox(node, depth);
+  wrap.appendChild(box);
+
+  if (node.children && node.children.length > 0) {
+    const spacer = el('div', 'connector-spacer');
+    wrap.appendChild(spacer);
+
+    if (depth === 0) {
+      // Root → children in a horizontal row
+      const row = el('div', 'children-row');
+      node.children.forEach(child => {
+        const col = el('div', 'child-col');
+        col.appendChild(renderNode(child, depth + 1));
+        row.appendChild(col);
+      });
+      wrap.appendChild(row);
+    } else {
+      // All other levels → children in a vertical column
+      const col = el('div', 'children-col');
+      node.children.forEach(child => {
+        col.appendChild(renderNode(child, depth + 1));
+      });
+      wrap.appendChild(col);
+    }
+  }
+
+  return wrap;
+}
+
+// ── SVG line drawing ──────────────────────────────────────────────────────────
+function getPos(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const r  = el.getBoundingClientRect();
+  const sr = svg.parentElement.getBoundingClientRect();
+  return {
+    cx:     r.left - sr.left + r.width / 2,
+    top:    r.top  - sr.top,
+    bottom: r.bottom - sr.top,
+  };
+}
+
+function addSvgLine(x1, y1, x2, y2, color, width) {
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', x1);  line.setAttribute('y1', y1);
+  line.setAttribute('x2', x2);  line.setAttribute('y2', y2);
+  line.setAttribute('stroke', color || '#2e6da4');
+  line.setAttribute('stroke-width', width || '1.8');
+  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('opacity', '0.65');
+  svg.appendChild(line);
+}
+
+function collectEdges(node, edges = []) {
+  if (node.children && node.children.length > 0) {
+    edges.push({
+      parent:   safeId(node.name),
+      children: node.children.map(c => safeId(c.name)),
+    });
+    node.children.forEach(c => collectEdges(c, edges));
+  }
+  return edges;
+}
+
+function drawLines(tree) {
+  svg.innerHTML = '';
+  const container = svg.parentElement;
+  svg.setAttribute('width',  container.scrollWidth);
+  svg.setAttribute('height', container.scrollHeight);
+
+  const edges = collectEdges(tree);
+
+  edges.forEach(({ parent, children }, idx) => {
+    const pPos       = getPos(parent);
+    if (!pPos) return;
+
+    const childPositions = children.map(id => getPos(id)).filter(Boolean);
+    if (!childPositions.length) return;
+
+    const isRootEdge = idx === 0;
+    const color      = isRootEdge ? '#1a3c5e' : '#2e6da4';
+    const busY       = pPos.bottom + 14;
+
+    // Stem: parent bottom → bus
+    addSvgLine(pPos.cx, pPos.bottom, pPos.cx, busY, color, isRootEdge ? 2 : 1.8);
+
+    if (childPositions.length > 1) {
+      // Horizontal bus spanning all children
+      const lx = Math.min(...childPositions.map(p => p.cx));
+      const rx = Math.max(...childPositions.map(p => p.cx));
+      addSvgLine(lx, busY, rx, busY, color, isRootEdge ? 2 : 1.8);
+    }
+
+    // Drop from bus to each child top
+    childPositions.forEach(cp => {
+      addSvgLine(cp.cx, busY, cp.cx, cp.top, color, 1.8);
+    });
+  });
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+function buildLegend(tree, depth = 0, seen = new Set()) {
+  if (seen.has(depth)) return;
+  seen.add(depth);
+  const c = DEPTH_COLORS[Math.min(depth, DEPTH_COLORS.length - 1)];
+  const item = el('div', 'legend-item');
+  const swatch = el('div', 'legend-swatch');
+  swatch.style.background = c.bg;
+  swatch.style.border     = `1px solid ${c.fg === '#fff' ? 'transparent' : '#aac'}`;
+  item.appendChild(swatch);
+  item.appendChild(document.createTextNode(
+    depth === 0 ? 'Root Manager' : `Level ${depth}`
+  ));
+  legendEl.appendChild(item);
+  (tree.children || []).forEach(child => buildLegend(child, depth + 1, seen));
+}
+
+// ── Toggles ───────────────────────────────────────────────────────────────────
+function applyToggles() {
+  document.querySelectorAll('.box-jobtitle').forEach(e => {
+    e.style.display = showTitle ? '' : 'none';
+  });
+  document.querySelectorAll('.box-location').forEach(e => {
+    e.style.display = showLoc ? '' : 'none';
+  });
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── Load roots dropdown ───────────────────────────────────────────────────────
+async function loadRoots() {
+  const roots = await fetchJSON('/api/roots');
+  rootSelect.innerHTML = '';
+  roots.forEach(name => {
+    const opt    = document.createElement('option');
+    opt.value    = name;
+    opt.textContent = name;
+    rootSelect.appendChild(opt);
+  });
+  return roots;
+}
+
+// ── Load & render chart ───────────────────────────────────────────────────────
+async function loadChart(rootName) {
+  currentRoot = rootName;
+  setStatus('Loading…');
+  try {
+    const tree = await fetchJSON(`/api/hierarchy?root=${encodeURIComponent(rootName)}`);
+    currentTree = tree;
+    renderChart(tree);
+    setStatus(`Updated: ${new Date().toLocaleTimeString()}`);
+  } catch (e) {
+    setStatus('Error loading chart');
+    chartRoot.innerHTML = `<div id="loading">Could not load chart. Is the server running?</div>`;
+  }
+}
+
+function renderChart(tree) {
+  chartRoot.innerHTML = '';
+  legendEl.innerHTML  = '';
+
+  buildLegend(tree);
+  chartRoot.appendChild(renderNode(tree, 0));
+  applyToggles();
+
+  // Wait for layout then draw lines
+  requestAnimationFrame(() => setTimeout(() => drawLines(tree), 30));
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+btnExport.addEventListener('click', async () => {
+  if (!currentRoot) return;
+  try {
+    setStatus('Preparing export…');
+    const res = await fetch(`/api/export?root=${encodeURIComponent(currentRoot)}`);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `org-chart-${currentRoot.split(',')[0].trim()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus(`Exported: ${new Date().toLocaleTimeString()}`);
+  } catch (e) {
+    setStatus('Export failed');
+  }
+});
+
+// ── Toggle listeners ──────────────────────────────────────────────────────────
+togTitle.addEventListener('change', e => {
+  showTitle = e.target.checked;
+  applyToggles();
+  if (currentTree) requestAnimationFrame(() => setTimeout(() => drawLines(currentTree), 30));
+});
+
+togLoc.addEventListener('change', e => {
+  showLoc = e.target.checked;
+  applyToggles();
+  if (currentTree) requestAnimationFrame(() => setTimeout(() => drawLines(currentTree), 30));
+});
+
+rootSelect.addEventListener('change', () => loadChart(rootSelect.value));
+
+// ── Auto-refresh polling ──────────────────────────────────────────────────────
+async function pollForChanges() {
+  // Skip polling in export mode (static file)
+  if (typeof EXPORT_MODE !== 'undefined' && EXPORT_MODE) return;
+  try {
+    const { mtime } = await fetchJSON('/api/mtime');
+    if (lastMtime !== 0 && mtime !== lastMtime) {
+      setStatus('Excel changed — refreshing…');
+      await loadChart(currentRoot);
+    }
+    lastMtime = mtime;
+  } catch {}
+}
+
+setInterval(pollForChanges, 3000);
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  // Export mode: data is pre-loaded, no server calls needed
+  if (typeof EXPORTED_TREE !== 'undefined' && EXPORTED_TREE) {
+    chartRoot.innerHTML = '';
+    legendEl.innerHTML  = '';
+    buildLegend(EXPORTED_TREE);
+    chartRoot.appendChild(renderNode(EXPORTED_TREE, 0));
+    applyToggles();
+    requestAnimationFrame(() => setTimeout(() => drawLines(EXPORTED_TREE), 30));
+    setStatus('Static export');
+    btnExport.style.display = 'none';
+    rootSelect.innerHTML = `<option>${EXPORTED_TREE.name}</option>`;
+    return;
+  }
+
+  // Live mode
+  try {
+    const roots = await loadRoots();
+    if (roots.length > 0) {
+      await loadChart(roots[0]);
+      const { mtime } = await fetchJSON('/api/mtime');
+      lastMtime = mtime;
+    } else {
+      setStatus('No managers found in Excel');
+    }
+  } catch (e) {
+    setStatus('Cannot connect to server');
+    chartRoot.innerHTML = `<div id="loading">Cannot reach server. Make sure <code>python server.py</code> is running.</div>`;
+  }
+}
+
+window.addEventListener('load', init);
+
+// Redraw lines on window resize
+window.addEventListener('resize', () => {
+  if (currentTree) requestAnimationFrame(() => setTimeout(() => drawLines(currentTree), 30));
+});
+</script>
+</body>
+</html>

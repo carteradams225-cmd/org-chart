@@ -1,0 +1,6 @@
+{
+  "excel_path": "C:/path/to/your/employee_hierarchy.xlsx",
+  "sheet_name": null,
+  "poll_interval_seconds": 5,
+  "port": 5000
+}
