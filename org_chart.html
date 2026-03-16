@@ -400,8 +400,8 @@ function addSvgLine(x1, y1, x2, y2, color, width) {
   line.setAttribute('x2', x2);  line.setAttribute('y2', y2);
   line.setAttribute('stroke', color || '#2e6da4');
   line.setAttribute('stroke-width', width || '1.8');
-  line.setAttribute('stroke-linecap', 'round');
-  line.setAttribute('opacity', '0.65');
+  line.setAttribute('stroke-linecap', 'square');
+  line.setAttribute('opacity', '0.85');
   svg.appendChild(line);
 }
 
@@ -431,23 +431,27 @@ function drawLines(tree) {
     const childPositions = children.map(id => getPos(id)).filter(Boolean);
     if (!childPositions.length) return;
 
-    const isRootEdge = idx === 0;
-    const color      = isRootEdge ? '#1a3c5e' : '#2e6da4';
-    const busY       = pPos.bottom + 14;
+    const isRootEdge  = idx === 0;
+    const color       = isRootEdge ? '#1a3c5e' : '#2e6da4';
+    const lineW       = isRootEdge ? 2 : 1.8;
 
-    // Stem: parent bottom → bus
-    addSvgLine(pPos.cx, pPos.bottom, pPos.cx, busY, color, isRootEdge ? 2 : 1.8);
+    // Bus Y sits at the midpoint between parent bottom and the nearest child top
+    const minChildTop = Math.min(...childPositions.map(p => p.top));
+    const busY        = pPos.bottom + (minChildTop - pPos.bottom) * 0.5;
+
+    // Vertical stem: parent bottom → bus
+    addSvgLine(pPos.cx, pPos.bottom, pPos.cx, busY, color, lineW);
 
     if (childPositions.length > 1) {
-      // Horizontal bus spanning all children
+      // Horizontal bracket spanning leftmost → rightmost child center
       const lx = Math.min(...childPositions.map(p => p.cx));
       const rx = Math.max(...childPositions.map(p => p.cx));
-      addSvgLine(lx, busY, rx, busY, color, isRootEdge ? 2 : 1.8);
+      addSvgLine(lx, busY, rx, busY, color, lineW);
     }
 
-    // Drop from bus to each child top
+    // Vertical drops: bus → each child top
     childPositions.forEach(cp => {
-      addSvgLine(cp.cx, busY, cp.cx, cp.top, color, 1.8);
+      addSvgLine(cp.cx, busY, cp.cx, cp.top, color, lineW);
     });
   });
 }
