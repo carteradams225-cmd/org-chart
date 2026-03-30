@@ -173,19 +173,20 @@ select:focus { border-color: #7bbce0; }
   justify-content: center;
   text-align: center;
   padding: 9px 14px;
-  border-radius: 7px;
-  box-shadow: 0 2px 7px rgba(0,0,0,0.18);
+  border-radius: 0;
+  box-shadow: 0 2px 7px rgba(0,0,0,0.12);
   min-width: 148px;
   max-width: 190px;
   position: relative;
   z-index: 2;
   transition: transform 0.1s, box-shadow 0.1s;
   cursor: default;
+  background: #ffffff;
 }
 
 .box:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 14px rgba(0,0,0,0.22);
+  box-shadow: 0 5px 14px rgba(0,0,0,0.18);
 }
 
 .box-name {
@@ -201,13 +202,13 @@ select:focus { border-color: #7bbce0; }
   opacity: 0.88;
 }
 
-/* Depth-based colors */
-.depth-0 { background: #1a3c5e; color: #fff; font-size: 14px; min-width: 200px; }
-.depth-1 { background: #2e6da4; color: #fff; }
-.depth-2 { background: #4a90c4; color: #fff; }
-.depth-3 { background: #7bbce0; color: #1a3c5e; }
-.depth-4 { background: #b0d8f0; color: #1a3c5e; }
-.depth-5 { background: #d6ecf8; color: #1a3c5e; }
+/* Depth-based colors — border reflects green hierarchy, background always white */
+.depth-0 { background: #fff; color: #222; border: 2px solid #2d8a23; font-size: 14px; min-width: 200px; }
+.depth-1 { background: #fff; color: #222; border: 2px solid #4bcd3e; }
+.depth-2 { background: #fff; color: #222; border: 2px solid #6fd765; }
+.depth-3 { background: #fff; color: #222; border: 2px solid #93e18b; }
+.depth-4 { background: #fff; color: #222; border: 2px solid #b7ebb2; }
+.depth-5 { background: #fff; color: #222; border: 2px solid #dbf5d8; }
 
 /* ── Loading / error states ───────────────────────────────────────────────── */
 #loading {
@@ -314,12 +315,12 @@ function setStatus(msg) { statusEl.textContent = msg; }
 
 // ── Box rendering ─────────────────────────────────────────────────────────────
 const DEPTH_COLORS = [
-  { bg: '#1a3c5e', fg: '#ffffff' },
-  { bg: '#2e6da4', fg: '#ffffff' },
-  { bg: '#4a90c4', fg: '#ffffff' },
-  { bg: '#7bbce0', fg: '#1a3c5e' },
-  { bg: '#b0d8f0', fg: '#1a3c5e' },
-  { bg: '#d6ecf8', fg: '#1a3c5e' },
+  { bg: '#ffffff', fg: '#222222', border: '#2d8a23' },  // Root — darker green
+  { bg: '#ffffff', fg: '#222222', border: '#4bcd3e' },  // Level 1
+  { bg: '#ffffff', fg: '#222222', border: '#6fd765' },  // Level 2
+  { bg: '#ffffff', fg: '#222222', border: '#93e18b' },  // Level 3
+  { bg: '#ffffff', fg: '#222222', border: '#b7ebb2' },  // Level 4
+  { bg: '#ffffff', fg: '#222222', border: '#dbf5d8' },  // Level 5
 ];
 
 function makeBox(node, depth) {
@@ -328,6 +329,7 @@ function makeBox(node, depth) {
   box.id       = safeId(node.name);
   box.style.background = c.bg;
   box.style.color      = c.fg;
+  box.style.border     = `2px solid ${c.border}`;
 
   const nameEl = el('div', 'box-name');
   nameEl.textContent = node.name;
@@ -432,7 +434,7 @@ function drawLines(tree) {
     if (!childPositions.length) return;
 
     const isRootEdge  = idx === 0;
-    const color       = isRootEdge ? '#1a3c5e' : '#2e6da4';
+    const color       = isRootEdge ? '#2d8a23' : '#4bcd3e';
     const lineW       = isRootEdge ? 2 : 1.8;
 
     // Bus Y sits at the midpoint between parent bottom and the nearest child top
@@ -464,7 +466,7 @@ function buildLegend(tree, depth = 0, seen = new Set()) {
   const item = el('div', 'legend-item');
   const swatch = el('div', 'legend-swatch');
   swatch.style.background = c.bg;
-  swatch.style.border     = `1px solid ${c.fg === '#fff' ? 'transparent' : '#aac'}`;
+  swatch.style.border     = `2px solid ${c.border}`;
   item.appendChild(swatch);
   item.appendChild(document.createTextNode(
     depth === 0 ? 'Root Manager' : `Level ${depth}`
