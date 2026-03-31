@@ -174,7 +174,11 @@ def background_watcher():
 
 @app.route('/')
 def index():
-    return send_from_directory(BASE_DIR, 'org_chart.html')
+    resp = send_from_directory(BASE_DIR, 'org_chart.html')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 @app.route('/api/roots')
 def api_roots():
