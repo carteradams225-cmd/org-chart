@@ -115,6 +115,7 @@ select:focus { border-color: #7bbce0; }
   flex: 1;
   overflow: auto;
   padding: 36px 40px 60px;
+  font-family: Calibri, 'Calibri', sans-serif;
 }
 
 #chart-inner {
@@ -389,6 +390,9 @@ function getPos(id) {
   const sr = svg.parentElement.getBoundingClientRect();
   return {
     cx:     r.left - sr.left + r.width / 2,
+    cy:     r.top  - sr.top  + r.height / 2,
+    left:   r.left - sr.left,
+    right:  r.right - sr.left,
     top:    r.top  - sr.top,
     bottom: r.bottom - sr.top,
   };
@@ -435,24 +439,49 @@ function drawLines(tree) {
     const color       = isRootEdge ? '#1a3c5e' : '#2e6da4';
     const lineW       = isRootEdge ? 2 : 1.8;
 
-    // Bus Y sits at the midpoint between parent bottom and the nearest child top
-    const minChildTop = Math.min(...childPositions.map(p => p.top));
-    const busY        = pPos.bottom + (minChildTop - pPos.bottom) * 0.5;
+    if (isRootEdge) {
+      // Root → children in a horizontal row: keep existing bus logic
+      const minChildTop = Math.min(...childPositions.map(p => p.top));
+      const busY        = pPos.bottom + (minChildTop - pPos.bottom) * 0.5;
 
-    // Vertical stem: parent bottom → bus
-    addSvgLine(pPos.cx, pPos.bottom, pPos.cx, busY, color, lineW);
+      // Vertical stem: parent bottom → bus
+      addSvgLine(pPos.cx, pPos.bottom, pPos.cx, busY, color, lineW);
 
-    if (childPositions.length > 1) {
-      // Horizontal bracket spanning leftmost → rightmost child center
-      const lx = Math.min(...childPositions.map(p => p.cx));
-      const rx = Math.max(...childPositions.map(p => p.cx));
-      addSvgLine(lx, busY, rx, busY, color, lineW);
+      if (childPositions.length > 1) {
+        const lx = Math.min(...childPositions.map(p => p.cx));
+        const rx = Math.max(...childPositions.map(p => p.cx));
+        addSvgLine(lx, busY, rx, busY, color, lineW);
+      }
+
+      // Vertical drops: bus → each child top
+      childPositions.forEach(cp => {
+        addSvgLine(cp.cx, busY, cp.cx, cp.top, color, lineW);
+      });
+    } else {
+      // Non-root managers → "[" bracket to the left of the vertical children column
+      const sorted   = [...childPositions].sort((a, b) => a.top - b.top);
+      const first    = sorted[0];
+      const last     = sorted[sorted.length - 1];
+      const firstCY  = first.cy;
+      const lastCY   = last.cy;
+
+      // Bracket X: just left of the leftmost box edge
+      const bracketX = Math.min(...sorted.map(cp => cp.left)) - 14;
+
+      // busY: midpoint between parent bottom and first child top
+      const busY = pPos.bottom + (first.top - pPos.bottom) * 0.5;
+
+      // Vertical stem: parent bottom → busY
+      addSvgLine(pPos.cx, pPos.bottom, pPos.cx, busY, color, lineW);
+      // Elbow: parent cx → bracketX at busY (horizontal, going left)
+      addSvgLine(pPos.cx, busY, bracketX, busY, color, lineW);
+      // Bracket top cap → down along left bar to last child CY
+      addSvgLine(bracketX, busY, bracketX, lastCY, color, lineW);
+      // Horizontal connectors: bracketX → each child's left edge at child CY
+      sorted.forEach(cp => {
+        addSvgLine(bracketX, cp.cy, cp.left, cp.cy, color, lineW);
+      });
     }
-
-    // Vertical drops: bus → each child top
-    childPositions.forEach(cp => {
-      addSvgLine(cp.cx, busY, cp.cx, cp.top, color, lineW);
-    });
   });
 }
 
