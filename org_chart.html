@@ -204,6 +204,15 @@ select:focus { border-color: #7bbce0; }
   opacity: 0.88;
 }
 
+.box-dr {
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  font-size: 10px;
+  color: #555;
+  line-height: 1;
+}
+
 /* ── Loading / error states ───────────────────────────────────────────────── */
 #loading {
   display: flex;
@@ -324,8 +333,15 @@ function makeBox(node, depth) {
 
   if (node.location) {
     const loc = el('div', 'box-detail box-location');
-    loc.textContent = '\u{1F4CD} ' + node.location;
+    loc.textContent = node.location;
     box.appendChild(loc);
+  }
+
+  const directReports = (node.children || []).length;
+  if (directReports > 0) {
+    const dr = el('div', 'box-dr');
+    dr.textContent = directReports;
+    box.appendChild(dr);
   }
 
   return box;
