@@ -9,7 +9,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: Calibri, 'Calibri', sans-serif;
   background: #eef2f7;
   min-height: 100vh;
   display: flex;
@@ -115,7 +115,6 @@ select:focus { border-color: #7bbce0; }
   flex: 1;
   overflow: auto;
   padding: 36px 40px 60px;
-  font-family: Calibri, 'Calibri', sans-serif;
 }
 
 #chart-inner {
@@ -174,7 +173,10 @@ select:focus { border-color: #7bbce0; }
   justify-content: center;
   text-align: center;
   padding: 9px 14px;
-  border-radius: 7px;
+  border-radius: 0;
+  border: 2px solid #4bcd3e;
+  background: #ffffff;
+  color: #000000;
   box-shadow: 0 2px 7px rgba(0,0,0,0.18);
   min-width: 148px;
   max-width: 190px;
@@ -201,14 +203,6 @@ select:focus { border-color: #7bbce0; }
   margin-top: 4px;
   opacity: 0.88;
 }
-
-/* Depth-based colors */
-.depth-0 { background: #1a3c5e; color: #fff; font-size: 14px; min-width: 200px; }
-.depth-1 { background: #2e6da4; color: #fff; }
-.depth-2 { background: #4a90c4; color: #fff; }
-.depth-3 { background: #7bbce0; color: #1a3c5e; }
-.depth-4 { background: #b0d8f0; color: #1a3c5e; }
-.depth-5 { background: #d6ecf8; color: #1a3c5e; }
 
 /* ── Loading / error states ───────────────────────────────────────────────── */
 #loading {
@@ -314,21 +308,9 @@ function el(tag, className) {
 function setStatus(msg) { statusEl.textContent = msg; }
 
 // ── Box rendering ─────────────────────────────────────────────────────────────
-const DEPTH_COLORS = [
-  { bg: '#1a3c5e', fg: '#ffffff' },
-  { bg: '#2e6da4', fg: '#ffffff' },
-  { bg: '#4a90c4', fg: '#ffffff' },
-  { bg: '#7bbce0', fg: '#1a3c5e' },
-  { bg: '#b0d8f0', fg: '#1a3c5e' },
-  { bg: '#d6ecf8', fg: '#1a3c5e' },
-];
-
 function makeBox(node, depth) {
-  const c      = DEPTH_COLORS[Math.min(depth, DEPTH_COLORS.length - 1)];
   const box    = el('div', 'box');
   box.id       = safeId(node.name);
-  box.style.background = c.bg;
-  box.style.color      = c.fg;
 
   const nameEl = el('div', 'box-name');
   nameEl.textContent = node.name;
@@ -402,7 +384,7 @@ function addSvgLine(x1, y1, x2, y2, color, width) {
   const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
   line.setAttribute('x1', x1);  line.setAttribute('y1', y1);
   line.setAttribute('x2', x2);  line.setAttribute('y2', y2);
-  line.setAttribute('stroke', color || '#2e6da4');
+  line.setAttribute('stroke', color || '#4bcd3e');
   line.setAttribute('stroke-width', width || '1.8');
   line.setAttribute('stroke-linecap', 'square');
   line.setAttribute('opacity', '0.85');
@@ -436,7 +418,7 @@ function drawLines(tree) {
     if (!childPositions.length) return;
 
     const isRootEdge  = idx === 0;
-    const color       = isRootEdge ? '#1a3c5e' : '#2e6da4';
+    const color       = '#4bcd3e';
     const lineW       = isRootEdge ? 2 : 1.8;
 
     if (isRootEdge) {
@@ -489,11 +471,10 @@ function drawLines(tree) {
 function buildLegend(tree, depth = 0, seen = new Set()) {
   if (seen.has(depth)) return;
   seen.add(depth);
-  const c = DEPTH_COLORS[Math.min(depth, DEPTH_COLORS.length - 1)];
   const item = el('div', 'legend-item');
   const swatch = el('div', 'legend-swatch');
-  swatch.style.background = c.bg;
-  swatch.style.border     = `1px solid ${c.fg === '#fff' ? 'transparent' : '#aac'}`;
+  swatch.style.background = '#ffffff';
+  swatch.style.border     = '2px solid #4bcd3e';
   item.appendChild(swatch);
   item.appendChild(document.createTextNode(
     depth === 0 ? 'Root Manager' : `Level ${depth}`
