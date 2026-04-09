@@ -264,11 +264,7 @@ select:focus { border-color: #7bbce0; }
       Location
     </label>
 
-    <button class="btn" id="btn-export" title="Download a standalone HTML file you can email">
-      ⬇ Export
-    </button>
-
-    <span id="status">Connecting…</span>
+    <span id="status">Loading…</span>
   </div>
 </header>
 
@@ -282,22 +278,26 @@ select:focus { border-color: #7bbce0; }
 </div>
 
 <script>
+// ── SharePoint configuration ───────────────────────────────────────────────────
+// TODO: Replace these two placeholders with your actual SharePoint site URL and list name
+const SP_SITE = 'https://YOUR-TENANT.sharepoint.com/sites/YOUR-SITE';
+const SP_LIST = 'OrgChartData';
+
 // ── State ─────────────────────────────────────────────────────────────────────
-let currentRoot = null;
-let currentTree = null;
-let lastMtime   = 0;
-let showTitle   = true;
-let showLoc     = true;
+let currentRoot  = null;
+let currentTree  = null;
+let allEmployees = [];
+let showTitle    = true;
+let showLoc      = true;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const rootSelect  = document.getElementById('root-select');
-const chartRoot   = document.getElementById('chart-root');
-const svg         = document.getElementById('svg-lines');
-const statusEl    = document.getElementById('status');
-const legendEl    = document.getElementById('legend');
-const btnExport   = document.getElementById('btn-export');
-const togTitle    = document.getElementById('toggle-jobtitle');
-const togLoc      = document.getElementById('toggle-location');
+const rootSelect = document.getElementById('root-select');
+const chartRoot  = document.getElementById('chart-root');
+const svg        = document.getElementById('svg-lines');
+const statusEl   = document.getElementById('status');
+const legendEl   = document.getElementById('legend');
+const togTitle   = document.getElementById('toggle-jobtitle');
+const togLoc     = document.getElementById('toggle-location');
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function safeId(name) {
@@ -323,9 +323,9 @@ const DEPTH_COLORS = [
 ];
 
 function makeBox(node, depth) {
-  const c      = DEPTH_COLORS[Math.min(depth, DEPTH_COLORS.length - 1)];
-  const box    = el('div', 'box');
-  box.id       = safeId(node.name);
+  const c   = DEPTH_COLORS[Math.min(depth, DEPTH_COLORS.length - 1)];
+  const box = el('div', 'box');
+  box.id    = safeId(node.name);
   box.style.background = c.bg;
   box.style.color      = c.fg;
 
@@ -483,39 +483,88 @@ function applyToggles() {
   });
 }
 
-// ── API helpers ───────────────────────────────────────────────────────────────
-async function fetchJSON(url) {
-  const res = await fetch(url);
+// ── SharePoint data fetch ─────────────────────────────────────────────────────
+async function fetchEmployees() {
+  const url = `${SP_SITE}/_api/web/lists/getbytitle('${SP_LIST}')/items` +
+              `?$select=Title,JobTitle,LocationName,ManagerChain&$top=5000`;
+  const res = await fetch(url, {
+    headers: { 'Accept': 'application/json;odata=verbose' },
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  return data.d.results.map(item => ({
+    name:      item.Title,
+    job_title: item.JobTitle      || null,
+    location:  item.LocationName  || null,
+    mgr_chain: (() => {
+      try { return JSON.parse(item.ManagerChain || '[]'); }
+      catch { return []; }
+    })(),
+  }));
 }
 
-// ── Load roots dropdown ───────────────────────────────────────────────────────
-async function loadRoots() {
-  const roots = await fetchJSON('/api/roots');
-  rootSelect.innerHTML = '';
-  roots.forEach(name => {
-    const opt    = document.createElement('option');
-    opt.value    = name;
-    opt.textContent = name;
-    rootSelect.appendChild(opt);
-  });
-  return roots;
+// ── Hierarchy logic (ported from server.py) ───────────────────────────────────
+
+// Returns the direct manager: the last non-null entry in mgr_chain
+// that is not the employee themselves.
+function getDirectManager(emp) {
+  let last = null;
+  for (const name of emp.mgr_chain) {
+    if (name && name !== emp.name) last = name;
+  }
+  return last;
+}
+
+// Builds the recursive tree structure for a given root name.
+function buildTree(employees, rootName) {
+  const childrenMap = {};
+  const empLookup   = {};
+
+  for (const emp of employees) {
+    empLookup[emp.name] = emp;
+    const mgr = getDirectManager(emp);
+    if (!childrenMap[mgr]) childrenMap[mgr] = [];
+    childrenMap[mgr].push(emp.name);
+  }
+
+  function recurse(name) {
+    const emp = empLookup[name] || {};
+    return {
+      name:      name,
+      job_title: emp.job_title || null,
+      location:  emp.location  || null,
+      children:  (childrenMap[name] || []).map(c => recurse(c)),
+    };
+  }
+
+  return recurse(rootName);
+}
+
+// Returns all people who manage at least one other person in the dataset,
+// sorted alphabetically.
+function getAllRoots(employees) {
+  const empNames    = new Set(employees.map(e => e.name));
+  const childrenMap = {};
+
+  for (const emp of employees) {
+    const mgr = getDirectManager(emp);
+    if (mgr) {
+      if (!childrenMap[mgr]) childrenMap[mgr] = [];
+      childrenMap[mgr].push(emp.name);
+    }
+  }
+
+  return Object.keys(childrenMap).filter(n => empNames.has(n)).sort();
 }
 
 // ── Load & render chart ───────────────────────────────────────────────────────
-async function loadChart(rootName) {
+function loadChart(rootName) {
   currentRoot = rootName;
-  setStatus('Loading…');
-  try {
-    const tree = await fetchJSON(`/api/hierarchy?root=${encodeURIComponent(rootName)}`);
-    currentTree = tree;
-    renderChart(tree);
-    setStatus(`Updated: ${new Date().toLocaleTimeString()}`);
-  } catch (e) {
-    setStatus('Error loading chart');
-    chartRoot.innerHTML = `<div id="loading">Could not load chart. Is the server running?</div>`;
-  }
+  const tree  = buildTree(allEmployees, rootName);
+  currentTree = tree;
+  renderChart(tree);
+  setStatus(`Updated: ${new Date().toLocaleTimeString()}`);
 }
 
 function renderChart(tree) {
@@ -529,25 +578,6 @@ function renderChart(tree) {
   // Wait for layout then draw lines
   requestAnimationFrame(() => setTimeout(() => drawLines(tree), 30));
 }
-
-// ── Export ────────────────────────────────────────────────────────────────────
-btnExport.addEventListener('click', async () => {
-  if (!currentRoot) return;
-  try {
-    setStatus('Preparing export…');
-    const res = await fetch(`/api/export?root=${encodeURIComponent(currentRoot)}`);
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `org-chart-${currentRoot.split(',')[0].trim()}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setStatus(`Exported: ${new Date().toLocaleTimeString()}`);
-  } catch (e) {
-    setStatus('Export failed');
-  }
-});
 
 // ── Toggle listeners ──────────────────────────────────────────────────────────
 togTitle.addEventListener('change', e => {
@@ -564,51 +594,32 @@ togLoc.addEventListener('change', e => {
 
 rootSelect.addEventListener('change', () => loadChart(rootSelect.value));
 
-// ── Auto-refresh polling ──────────────────────────────────────────────────────
-async function pollForChanges() {
-  // Skip polling in export mode (static file)
-  if (typeof EXPORT_MODE !== 'undefined' && EXPORT_MODE) return;
-  try {
-    const { mtime } = await fetchJSON('/api/mtime');
-    if (lastMtime !== 0 && mtime !== lastMtime) {
-      setStatus('Excel changed — refreshing…');
-      await loadChart(currentRoot);
-    }
-    lastMtime = mtime;
-  } catch {}
-}
-
-setInterval(pollForChanges, 3000);
-
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
-  // Export mode: data is pre-loaded, no server calls needed
-  if (typeof EXPORTED_TREE !== 'undefined' && EXPORTED_TREE) {
-    chartRoot.innerHTML = '';
-    legendEl.innerHTML  = '';
-    buildLegend(EXPORTED_TREE);
-    chartRoot.appendChild(renderNode(EXPORTED_TREE, 0));
-    applyToggles();
-    requestAnimationFrame(() => setTimeout(() => drawLines(EXPORTED_TREE), 30));
-    setStatus('Static export');
-    btnExport.style.display = 'none';
-    rootSelect.innerHTML = `<option>${EXPORTED_TREE.name}</option>`;
-    return;
-  }
-
-  // Live mode
+  setStatus('Loading…');
   try {
-    const roots = await loadRoots();
-    if (roots.length > 0) {
-      await loadChart(roots[0]);
-      const { mtime } = await fetchJSON('/api/mtime');
-      lastMtime = mtime;
-    } else {
-      setStatus('No managers found in Excel');
+    allEmployees = await fetchEmployees();
+    const roots  = getAllRoots(allEmployees);
+
+    rootSelect.innerHTML = '';
+
+    if (roots.length === 0) {
+      setStatus('No managers found');
+      chartRoot.innerHTML = '<div id="loading">No managers found in SharePoint list.</div>';
+      return;
     }
+
+    roots.forEach(name => {
+      const opt       = document.createElement('option');
+      opt.value       = name;
+      opt.textContent = name;
+      rootSelect.appendChild(opt);
+    });
+
+    loadChart(roots[0]);
   } catch (e) {
-    setStatus('Cannot connect to server');
-    chartRoot.innerHTML = `<div id="loading">Cannot reach server. Make sure <code>python server.py</code> is running.</div>`;
+    setStatus('Error loading data');
+    chartRoot.innerHTML = '<div id="loading">Could not load data from SharePoint. Check SP_SITE and SP_LIST configuration.</div>';
   }
 }
 
